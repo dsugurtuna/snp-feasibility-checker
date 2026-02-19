@@ -1,7 +1,7 @@
 """Tests for ArrayCatalogue and FeasibilityChecker."""
 
 from snp_checker.catalogue import ArrayCatalogue, ArrayRecord
-from snp_checker.checker import FeasibilityChecker, FeasibilityReport, SNPCoverage
+from snp_checker.checker import FeasibilityChecker, SNPCoverage
 
 
 def _make_catalogue():
