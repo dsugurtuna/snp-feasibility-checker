@@ -1,7 +1,9 @@
 """Feasibility checker module.
 
-Checks whether target SNPs are available on genotyping arrays
-and reports coverage across study batches.
+Checks whether target SNPs are on each registered genotyping array and, when
+per-array sample counts are known, how many participants have them typed.
+Each participant is assumed to be genotyped on exactly one array; if some are
+typed on several, ``genotyped_samples`` over-counts them.
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ class SNPCoverage:
     snp_id: str
     present_on: list[str] = field(default_factory=list)
     missing_from: list[str] = field(default_factory=list)
+    genotyped_samples: int = 0  # participants on arrays that carry the SNP
+    total_samples: int = 0  # participants across all registered arrays
 
     @property
     def is_available(self) -> bool:
@@ -25,10 +29,18 @@ class SNPCoverage:
 
     @property
     def coverage_fraction(self) -> float:
+        """Fraction of registered arrays that carry the SNP."""
         total = len(self.present_on) + len(self.missing_from)
         if total == 0:
             return 0.0
         return len(self.present_on) / total
+
+    @property
+    def sample_fraction(self) -> float:
+        """Fraction of participants genotyped for the SNP (needs sample counts)."""
+        if self.total_samples == 0:
+            return 0.0
+        return self.genotyped_samples / self.total_samples
 
 
 @dataclass
@@ -65,6 +77,8 @@ class FeasibilityChecker:
         report = FeasibilityReport(target_snps=len(target_snps))
         array_names = self.catalogue.array_names
         array_hit_count: dict[str, int] = {a: 0 for a in array_names}
+        samples = {a: rec.sample_count for a in array_names if (rec := self.catalogue.get_array(a))}
+        total_samples = sum(samples.values())
 
         for snp_id in target_snps:
             arrays_with = self.catalogue.find_arrays_containing(snp_id)
@@ -74,6 +88,8 @@ class FeasibilityChecker:
                 snp_id=snp_id,
                 present_on=arrays_with,
                 missing_from=arrays_without,
+                genotyped_samples=sum(samples[a] for a in arrays_with),
+                total_samples=total_samples,
             )
             report.coverage_details.append(cov)
 

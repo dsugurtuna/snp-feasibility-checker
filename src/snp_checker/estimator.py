@@ -1,7 +1,10 @@
 """Recall estimator module.
 
-Estimates achievable recall sample sizes based on SNP availability,
-allele frequencies, and cohort sizes.
+Expected genotype counts under Hardy-Weinberg equilibrium (HWE) for a given
+alternative-allele frequency and number of genotyped participants.
+
+These are expected counts before consent, eligibility, contactability and
+response, so they are an upper bound on recall yield, not a forecast.
 """
 
 from __future__ import annotations
@@ -11,26 +14,35 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RecallEstimate:
-    """Estimated recall study yield."""
+    """Expected genotype counts for one SNP."""
 
     snp_id: str
     allele_frequency: float = 0.0
     cohort_size: int = 0
-    expected_carriers: int = 0
-    expected_homozygotes: int = 0
+    expected_carriers: int = 0  # at least one alternative allele: N(1 - p^2)
+    expected_homozygotes: int = 0  # two alternative alleles: N q^2
     arrays_available: list[str] = field(default_factory=list)
+    expected_heterozygotes: int = 0  # exactly one alternative allele: N 2pq
+
+
+def _check_inputs(freq: float, n: int) -> None:
+    if not 0.0 <= freq <= 1.0:
+        raise ValueError(f"allele frequency must be between 0 and 1, got {freq}")
+    if n < 0:
+        raise ValueError(f"cohort size must be non-negative, got {n}")
 
 
 class RecallEstimator:
-    """Estimate recall study yield from allele frequencies.
+    """Estimate expected carrier and homozygote counts under HWE.
 
-    Applies Hardy-Weinberg equilibrium to estimate carrier and
-    homozygote counts in a given cohort.
+    ``allele_frequency`` is the frequency q of the allele of interest
+    (usually the alternative allele); p = 1 - q. Counts are rounded to the
+    nearest whole participant.
 
     Parameters
     ----------
     default_cohort_size : int
-        Default cohort size when not specified per-SNP.
+        Number of genotyped participants used when no size is given per SNP.
     """
 
     def __init__(self, default_cohort_size: int = 50000) -> None:
@@ -38,16 +50,22 @@ class RecallEstimator:
 
     @staticmethod
     def _hwe_carriers(freq: float, n: int) -> int:
-        """Estimated heterozygous + homozygous alt carriers (2pq + q²) x N."""
-        q = freq
-        p = 1.0 - q
-        carrier_freq = 2 * p * q + q * q
-        return int(carrier_freq * n)
+        """Expected carriers of at least one copy: N(2pq + q^2) = N(1 - p^2)."""
+        _check_inputs(freq, n)
+        p = 1.0 - freq
+        return round((1.0 - p * p) * n)
 
     @staticmethod
     def _hwe_homozygotes(freq: float, n: int) -> int:
-        """Estimated homozygous alt count (q²) x N."""
-        return int(freq * freq * n)
+        """Expected homozygotes for the allele of interest: N q^2."""
+        _check_inputs(freq, n)
+        return round(freq * freq * n)
+
+    @staticmethod
+    def _hwe_heterozygotes(freq: float, n: int) -> int:
+        """Expected heterozygotes: N 2pq."""
+        _check_inputs(freq, n)
+        return round(2.0 * (1.0 - freq) * freq * n)
 
     def estimate(
         self,
@@ -56,8 +74,13 @@ class RecallEstimator:
         cohort_size: int | None = None,
         arrays_available: list[str] | None = None,
     ) -> RecallEstimate:
-        """Estimate yield for a single SNP."""
-        n = cohort_size or self.default_cohort_size
+        """Estimate expected counts for a single SNP.
+
+        ``cohort_size`` should be the number of participants genotyped for
+        this SNP (see ``SNPCoverage.genotyped_samples``), not the whole
+        cohort, when the SNP is missing from some arrays.
+        """
+        n = self.default_cohort_size if cohort_size is None else cohort_size
         return RecallEstimate(
             snp_id=snp_id,
             allele_frequency=allele_frequency,
@@ -65,6 +88,7 @@ class RecallEstimator:
             expected_carriers=self._hwe_carriers(allele_frequency, n),
             expected_homozygotes=self._hwe_homozygotes(allele_frequency, n),
             arrays_available=arrays_available or [],
+            expected_heterozygotes=self._hwe_heterozygotes(allele_frequency, n),
         )
 
     def estimate_batch(
@@ -72,5 +96,5 @@ class RecallEstimator:
         snp_frequencies: dict[str, float],
         cohort_size: int | None = None,
     ) -> list[RecallEstimate]:
-        """Estimate yield for multiple SNPs."""
+        """Estimate expected counts for multiple SNPs."""
         return [self.estimate(snp_id, freq, cohort_size) for snp_id, freq in snp_frequencies.items()]

@@ -17,6 +17,7 @@ class ArrayRecord:
     array_name: str
     snp_count: int = 0
     snp_ids: frozenset[str] = field(default_factory=frozenset)
+    sample_count: int = 0  # participants genotyped on this array, if known
 
     @property
     def snp_set(self) -> set[str]:
@@ -50,8 +51,9 @@ class ArrayCatalogue:
         array_name: str,
         csv_path: str | Path,
         snp_column: str = "snp_id",
+        sample_count: int = 0,
     ) -> ArrayRecord:
-        """Load array manifest from CSV.
+        """Load an array manifest from CSV.
 
         Parameters
         ----------
@@ -60,19 +62,30 @@ class ArrayCatalogue:
         csv_path : str or Path
             Path to the manifest CSV.
         snp_column : str
-            Column header containing SNP identifiers.
+            Column header containing SNP identifiers (rsIDs).
+        sample_count : int
+            Participants genotyped on this array, if known.
+
+        Raises
+        ------
+        ValueError
+            If ``snp_column`` is not in the header. Without this check a wrong
+            column name loads an empty array and every SNP looks unavailable.
         """
         snps: set[str] = set()
-        with open(csv_path) as fh:
+        with open(csv_path, newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
+            if snp_column not in (reader.fieldnames or []):
+                raise ValueError(f"{csv_path}: column {snp_column!r} not found; header is {reader.fieldnames}")
             for row in reader:
-                sid = row.get(snp_column, "").strip()
+                sid = (row.get(snp_column) or "").strip()
                 if sid:
                     snps.add(sid)
         record = ArrayRecord(
             array_name=array_name,
             snp_count=len(snps),
             snp_ids=frozenset(snps),
+            sample_count=sample_count,
         )
         self._arrays[array_name] = record
         return record
@@ -86,7 +99,7 @@ class ArrayCatalogue:
 
     def find_arrays_containing(self, snp_id: str) -> list[str]:
         """Return names of all arrays that contain a given SNP."""
-        return [name for name, rec in self._arrays.items() if snp_id in rec.snp_ids]
+        return sorted(name for name, rec in self._arrays.items() if snp_id in rec.snp_ids)
 
     @property
     def total_unique_snps(self) -> int:
