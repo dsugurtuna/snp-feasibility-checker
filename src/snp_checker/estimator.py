@@ -7,7 +7,6 @@ allele frequencies, and cohort sizes.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
 
 
 @dataclass
@@ -19,7 +18,7 @@ class RecallEstimate:
     cohort_size: int = 0
     expected_carriers: int = 0
     expected_homozygotes: int = 0
-    arrays_available: List[str] = field(default_factory=list)
+    arrays_available: list[str] = field(default_factory=list)
 
 
 class RecallEstimator:
@@ -39,7 +38,7 @@ class RecallEstimator:
 
     @staticmethod
     def _hwe_carriers(freq: float, n: int) -> int:
-        """Estimated heterozygous + homozygous alt carriers (2pq + q²) × N."""
+        """Estimated heterozygous + homozygous alt carriers (2pq + q²) x N."""
         q = freq
         p = 1.0 - q
         carrier_freq = 2 * p * q + q * q
@@ -47,7 +46,7 @@ class RecallEstimator:
 
     @staticmethod
     def _hwe_homozygotes(freq: float, n: int) -> int:
-        """Estimated homozygous alt count (q²) × N."""
+        """Estimated homozygous alt count (q²) x N."""
         return int(freq * freq * n)
 
     def estimate(
@@ -55,7 +54,7 @@ class RecallEstimator:
         snp_id: str,
         allele_frequency: float,
         cohort_size: int | None = None,
-        arrays_available: List[str] | None = None,
+        arrays_available: list[str] | None = None,
     ) -> RecallEstimate:
         """Estimate yield for a single SNP."""
         n = cohort_size or self.default_cohort_size
@@ -70,11 +69,8 @@ class RecallEstimator:
 
     def estimate_batch(
         self,
-        snp_frequencies: Dict[str, float],
+        snp_frequencies: dict[str, float],
         cohort_size: int | None = None,
-    ) -> List[RecallEstimate]:
+    ) -> list[RecallEstimate]:
         """Estimate yield for multiple SNPs."""
-        return [
-            self.estimate(snp_id, freq, cohort_size)
-            for snp_id, freq in snp_frequencies.items()
-        ]
+        return [self.estimate(snp_id, freq, cohort_size) for snp_id, freq in snp_frequencies.items()]

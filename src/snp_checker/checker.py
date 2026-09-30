@@ -7,7 +7,6 @@ and reports coverage across study batches.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
 
 from .catalogue import ArrayCatalogue
 
@@ -17,8 +16,8 @@ class SNPCoverage:
     """Coverage summary for a single SNP."""
 
     snp_id: str
-    present_on: List[str] = field(default_factory=list)
-    missing_from: List[str] = field(default_factory=list)
+    present_on: list[str] = field(default_factory=list)
+    missing_from: list[str] = field(default_factory=list)
 
     @property
     def is_available(self) -> bool:
@@ -38,9 +37,9 @@ class FeasibilityReport:
 
     target_snps: int = 0
     available_count: int = 0
-    unavailable_snps: List[str] = field(default_factory=list)
-    coverage_details: List[SNPCoverage] = field(default_factory=list)
-    array_summary: Dict[str, int] = field(default_factory=dict)
+    unavailable_snps: list[str] = field(default_factory=list)
+    coverage_details: list[SNPCoverage] = field(default_factory=list)
+    array_summary: dict[str, int] = field(default_factory=dict)
 
     @property
     def feasibility_rate(self) -> float:
@@ -61,11 +60,11 @@ class FeasibilityChecker:
     def __init__(self, catalogue: ArrayCatalogue) -> None:
         self.catalogue = catalogue
 
-    def check(self, target_snps: List[str]) -> FeasibilityReport:
+    def check(self, target_snps: list[str]) -> FeasibilityReport:
         """Assess feasibility for a list of target SNPs."""
         report = FeasibilityReport(target_snps=len(target_snps))
         array_names = self.catalogue.array_names
-        array_hit_count: Dict[str, int] = {a: 0 for a in array_names}
+        array_hit_count: dict[str, int] = {a: 0 for a in array_names}
 
         for snp_id in target_snps:
             arrays_with = self.catalogue.find_arrays_containing(snp_id)
@@ -90,9 +89,9 @@ class FeasibilityChecker:
 
     def check_overlap(
         self,
-        target_snps: List[str],
+        target_snps: list[str],
         array_name: str,
-    ) -> Set[str]:
+    ) -> set[str]:
         """Return the intersection of target SNPs with a specific array."""
         arr = self.catalogue.get_array(array_name)
         if arr is None:

@@ -8,7 +8,6 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, FrozenSet, List, Set
 
 
 @dataclass
@@ -17,10 +16,10 @@ class ArrayRecord:
 
     array_name: str
     snp_count: int = 0
-    snp_ids: FrozenSet[str] = field(default_factory=frozenset)
+    snp_ids: frozenset[str] = field(default_factory=frozenset)
 
     @property
-    def snp_set(self) -> Set[str]:
+    def snp_set(self) -> set[str]:
         return set(self.snp_ids)
 
 
@@ -36,8 +35,8 @@ class ArrayCatalogue:
         Pre-loaded array records.
     """
 
-    def __init__(self, arrays: List[ArrayRecord] | None = None) -> None:
-        self._arrays: Dict[str, ArrayRecord] = {}
+    def __init__(self, arrays: list[ArrayRecord] | None = None) -> None:
+        self._arrays: dict[str, ArrayRecord] = {}
         if arrays:
             for arr in arrays:
                 self._arrays[arr.array_name] = arr
@@ -63,7 +62,7 @@ class ArrayCatalogue:
         snp_column : str
             Column header containing SNP identifiers.
         """
-        snps: Set[str] = set()
+        snps: set[str] = set()
         with open(csv_path) as fh:
             reader = csv.DictReader(fh)
             for row in reader:
@@ -82,20 +81,17 @@ class ArrayCatalogue:
         return self._arrays.get(name)
 
     @property
-    def array_names(self) -> List[str]:
+    def array_names(self) -> list[str]:
         return sorted(self._arrays.keys())
 
-    def find_arrays_containing(self, snp_id: str) -> List[str]:
+    def find_arrays_containing(self, snp_id: str) -> list[str]:
         """Return names of all arrays that contain a given SNP."""
-        return [
-            name for name, rec in self._arrays.items()
-            if snp_id in rec.snp_ids
-        ]
+        return [name for name, rec in self._arrays.items() if snp_id in rec.snp_ids]
 
     @property
     def total_unique_snps(self) -> int:
         """Total unique SNPs across all arrays."""
-        union: Set[str] = set()
+        union: set[str] = set()
         for rec in self._arrays.values():
             union |= rec.snp_ids
         return len(union)
