@@ -72,3 +72,30 @@ class TestFeasibilityChecker:
     def test_coverage_fraction(self):
         cov = SNPCoverage(snp_id="rs1", present_on=["A", "B"], missing_from=["C"])
         assert abs(cov.coverage_fraction - 2 / 3) < 0.01
+
+
+class TestSampleCoverage:
+    def test_genotyped_samples_follow_arrays(self):
+        cat = ArrayCatalogue()
+        cat.register(ArrayRecord("A", 3, frozenset(["rs1", "rs2"]), sample_count=1000))
+        cat.register(ArrayRecord("B", 2, frozenset(["rs1"]), sample_count=250))
+        report = FeasibilityChecker(cat).check(["rs1", "rs2", "rs3"])
+        by_id = {c.snp_id: c for c in report.coverage_details}
+        assert by_id["rs1"].genotyped_samples == 1250
+        assert by_id["rs2"].genotyped_samples == 1000
+        assert by_id["rs2"].sample_fraction == 0.8
+        assert by_id["rs3"].genotyped_samples == 0
+
+    def test_manifest_wrong_column_raises(self, tmp_path):
+        import pytest
+
+        csv_file = tmp_path / "manifest.csv"
+        csv_file.write_text("Name,Chr\nrs111,1\n")
+        with pytest.raises(ValueError, match="not found"):
+            ArrayCatalogue().load_manifest_csv("X", csv_file)
+
+    def test_manifest_with_bom_and_custom_column(self, tmp_path):
+        csv_file = tmp_path / "manifest.csv"
+        csv_file.write_bytes("﻿Name,Chr\nrs111,1\n".encode())
+        rec = ArrayCatalogue().load_manifest_csv("X", csv_file, snp_column="Name")
+        assert rec.snp_ids == frozenset({"rs111"})
