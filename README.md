@@ -2,79 +2,104 @@
 
 [![CI](https://github.com/dsugurtuna/snp-feasibility-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/dsugurtuna/snp-feasibility-checker/actions/workflows/ci.yml)
 
-**Assess SNP availability across genotyping arrays and estimate recall study yield using Hardy-Weinberg equilibrium.**
-
-Manages genotyping array manifests, checks target SNP coverage across arrays, and estimates achievable carrier/homozygote counts for recall-by-genotype study design.
+Check which genotyping arrays carry a set of target SNPs, how many participants that covers, and how many carriers and homozygotes to expect under Hardy-Weinberg equilibrium.
 
 > **Portfolio project.** Demonstrates generalised SNP feasibility workflows. No real array manifests or participant data are included.
 
----
+**Where this fits:** part of my clinical genomics and biobank data work. This repo works from array
+manifests; [biobank-variant-explorer](https://github.com/dsugurtuna/biobank-variant-explorer) checks
+the actual PLINK files; [ld-linkage-mapper](https://github.com/dsugurtuna/ld-linkage-mapper) finds
+proxies for SNPs that no array carries; and
+[recall-study-generator](https://github.com/dsugurtuna/recall-study-generator) designs the recall.
 
-## Architecture
+## The problem
 
-```
-src/snp_checker/
-    __init__.py      # Public API exports
-    catalogue.py     # Array manifest catalogue (ArrayCatalogue)
-    checker.py       # SNP feasibility assessment (FeasibilityChecker)
-    estimator.py     # HWE-based recall yield estimation (RecallEstimator)
-tests/
-    test_checker.py  # Catalogue and feasibility tests
-    test_estimator.py # HWE estimation tests
-```
+Before promising a recall-by-genotype study, you need two answers quickly: is the SNP genotyped for
+enough participants, and roughly how many people in each genotype group should exist? In a cohort
+genotyped on several arrays over the years, "is it on the array" depends on which array, and the
+number of people typed is not the cohort size.
 
----
+## What this does
 
-## Quick start
+- **Array catalogue** (`ArrayCatalogue`): register arrays by hand or load a manifest CSV, naming the
+  SNP column. A wrong column name raises an error instead of loading an empty array. Each array can
+  carry the number of participants genotyped on it.
+- **Feasibility check** (`FeasibilityChecker`): for each SNP, the arrays that carry it, the arrays
+  that do not, and the number of participants typed for it.
+- **Expected counts** (`RecallEstimator`): expected homozygotes (Nq²), heterozygotes (N·2pq) and
+  carriers of at least one copy (N(1−p²)) for a given allele frequency, rounded to whole people.
+
+## Quickstart
 
 ```bash
+git clone https://github.com/dsugurtuna/snp-feasibility-checker.git
+cd snp-feasibility-checker
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -v
+pytest
+python examples/demo.py
 ```
 
-### Python API
+The demo uses synthetic manifests, sample counts and allele frequencies. Its output, which
+`tests/test_demo.py` checks:
 
-```python
-from snp_checker import ArrayCatalogue, FeasibilityChecker, RecallEstimator
-from snp_checker.catalogue import ArrayRecord
+```text
+SNPs on at least one array: 3 of 4
 
-# Register arrays
-cat = ArrayCatalogue()
-cat.register(ArrayRecord("GSA_v3", 650000, frozenset(["rs429358", "rs7412"])))
-cat.load_manifest_csv("Axiom_UKB", "axiom_manifest.csv")
+snp        arrays            typed   hom   het carriers
+rs9100001  ARRAY_A,ARRAY_B   10000   225  2550     2775
+rs9100002  ARRAY_A            8000     3   314      317
+rs9100004  ARRAY_B            2000   180   840     1020
+rs9100009  -                     0     0     0        0
 
-# Check feasibility
-checker = FeasibilityChecker(cat)
-report = checker.check(["rs429358", "rs7412", "rs999999"])
-print(f"Feasibility rate: {report.feasibility_rate:.0%}")
-
-# Estimate recall yield
-estimator = RecallEstimator(default_cohort_size=50000)
-estimate = estimator.estimate("rs429358", allele_frequency=0.15)
-print(f"Expected carriers: {estimate.expected_carriers}")
+Expected counts under HWE, before consent, eligibility and response.
 ```
 
----
+`rs9100004` has the highest allele frequency but is only on the smaller array, so its expected
+homozygote count is lower than it would be across the whole cohort.
 
-## Key features
+## How it works
 
-| Feature | Detail |
-| :--- | :--- |
-| **Array catalogue** | Register and query genotyping array manifests |
-| **CSV manifest loading** | Bulk-load SNP content from manifest files |
-| **Feasibility checking** | Per-SNP coverage across all registered arrays |
-| **Array overlap** | Intersection of target SNPs with specific arrays |
-| **HWE estimation** | Carrier and homozygote count estimation |
-| **Batch estimation** | Yield estimates for multiple SNPs at once |
-
-## Development
-
-```bash
-make dev        # install with dev dependencies
-make test       # run pytest
-make lint       # run ruff
-make clean      # remove build artefacts
+```mermaid
+flowchart LR
+    M[Array manifests<br/>+ sample counts] --> C[ArrayCatalogue]
+    T[Target SNPs] --> F[FeasibilityChecker]
+    C --> F
+    F -->|participants typed per SNP| E[RecallEstimator]
+    A[Allele frequencies] --> E
+    E --> R[Expected hom / het / carriers]
 ```
+
+## Design decisions
+
+- **Use participants typed, not cohort size, as N.** A SNP on one array of three is typed only for
+  that array's participants. Feeding the whole cohort into the estimate overstates the yield.
+- **Round, do not truncate.** `int()` on a floating-point product dropped whole participants (for
+  q = 0.02 and N = 10,000 it gave 395 carriers instead of 396). Expected counts are rounded.
+- **Fail on a wrong manifest column.** Manifests from different vendors name the rsID column
+  differently. Silently loading zero SNPs makes every target look unavailable, which is the worst
+  kind of wrong answer: plausible.
+- **Plain data classes, no dependencies.** The logic is simple set arithmetic and a formula; it
+  should be easy to read and check by hand.
+
+## Limitations and what this is not
+
+- HWE expectations assume random mating and no selection. Real counts differ, especially for rare
+  variants, variants under selection, or ancestry-structured cohorts. Use observed genotype counts
+  when you have them.
+- The allele frequency you supply should come from a population that matches the cohort.
+- Expected counts are an upper bound on recall. Consent, eligibility, contactability and response
+  all reduce the number you can actually recall; none of these are modelled.
+- Matching is by exact SNP identifier. Vendor probe IDs must be mapped to rsIDs first, and genotype
+  call rate or QC failure per SNP is not considered.
+- `genotyped_samples` assumes each participant is typed on one array. If some are typed on several,
+  it over-counts them.
+
+## Roadmap
+
+- Accept observed genotype counts from PLINK `--freq`/`--hardy` output instead of HWE expectations.
+- Add per-SNP call-rate thresholds from array QC.
+- Optional attrition factors (consent, response) shown separately from the genetic expectation.
 
 ## Jira provenance
 
@@ -82,6 +107,20 @@ make clean      # remove build artefacts
 | :--- | :--- |
 | BIOIN-298 | SNP feasibility assessment for recall study planning |
 
+## Development
+
+```bash
+make dev     # install with dev dependencies
+make check   # ruff lint and format check, mypy, pytest
+```
+
+See [docs/WHY.md](docs/WHY.md) for the reasoning behind the design, and
+[CONTRIBUTING.md](CONTRIBUTING.md) to contribute.
+
+## Licence
+
+See [LICENSE](LICENSE).
+
 ---
 
-*Created by [dsugurtuna](https://github.com/dsugurtuna)*
+Personal project by [Ugur Tuna](https://github.com/dsugurtuna). Not affiliated with or endorsed by any employer.
