@@ -101,12 +101,6 @@ flowchart LR
 - Add per-SNP call-rate thresholds from array QC.
 - Optional attrition factors (consent, response) shown separately from the genetic expectation.
 
-## Jira provenance
-
-| Ticket | Description |
-| :--- | :--- |
-| BIOIN-298 | SNP feasibility assessment for recall study planning |
-
 ## Development
 
 ```bash
